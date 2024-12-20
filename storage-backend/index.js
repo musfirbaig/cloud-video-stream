@@ -181,8 +181,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         const decodedToken = jwt.verify(token, JWT_SECRET);
         const {CLERK_CLIENT_ID, event} = decodedToken;
 
-        if(event != "stream"){
-          return res.status(401).send('You are not authorized to stream video');
+        if(event != "upload"){
+          return res.status(401).send('You are not authorized to upload video');
         }
 
   // logging uploading
