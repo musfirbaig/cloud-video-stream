@@ -1,3 +1,4 @@
 /controller/node_modules
 /logging-service/node_modules
 /storage-backend/node_modules
+/logging-service/firebaseKey.json

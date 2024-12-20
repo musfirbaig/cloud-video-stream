@@ -27,7 +27,8 @@ try {
 const db = admin.firestore();
 
 // More robust error handling for Firestore operations
-exports.loggingService = async (req, res) => {
+// exports.loggingService = async (req, res) => {
+const loggingService = async (req, res) => {
     const { body } = req;
     const {event, status, timestamp, user_id} = body;
 
@@ -97,18 +98,29 @@ const app = express();
 
 app.use(express.json());
 
-app.all("/logging", exports.loggingService);
+app.all("/logging", loggingService);
 
-const PORT = 5000;
 
-// Add connection test on startup
-app.listen(PORT, async () => {
-    console.log(`Server is running on port ${PORT}`);
-    try {
-        const testRef = db.collection('test').doc('connectivity');
-        await testRef.set({ timestamp: admin.firestore.Timestamp.now() });
-        console.log('✅ Firestore connection test successful');
-    } catch (error) {
-        console.error('❌ Firestore connection test failed:');
-    }
-});
+// app.all("/logging", (req, res) => {
+//     console.log("logging request: ", req.body);
+
+//     res.send("logging request received");
+// });
+
+// const PORT = 5000;
+
+// // Add connection test on startup
+// app.listen(PORT, async () => {
+//     console.log(`Server is running on port ${PORT}`);
+//     try {
+//         const testRef = db.collection('test').doc('connectivity');
+//         await testRef.set({ timestamp: admin.firestore.Timestamp.now() });
+//         console.log('✅ Firestore connection test successful');
+//     } catch (error) {
+//         console.error('❌ Firestore connection test failed:');
+//     }
+// });
+
+
+exports.logging = app;
+
