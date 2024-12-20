@@ -13,7 +13,7 @@ const upload = multer({
 });
 
 const app = express();
-const port = 3380;
+const port = 8080;
 
 
 const JWT_SECRET ="APAAr/1/sEIVyc+/j/HtgpTVhZD/UXNjyVym0tZbMZM=";
