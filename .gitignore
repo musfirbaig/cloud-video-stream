@@ -2,3 +2,4 @@
 /logging-service/node_modules
 /storage-backend/node_modules
 /logging-service/firebaseKey.json
+/resource-monitor/node_modules
