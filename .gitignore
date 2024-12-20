@@ -3,3 +3,4 @@
 /storage-backend/node_modules
 /logging-service/firebaseKey.json
 /resource-monitor/node_modules
+/resource-monitor/firebaseKey.json
