@@ -4,13 +4,19 @@ const { Storage } = require('@google-cloud/storage');
 const multer = require('multer');
 const path = require('path');
 
+const jwt = require("jsonwebtoken");
+
 // Middleware to handle file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 }, 
 });
+
 const app = express();
 const port = 3380;
+
+
+const JWT_SECRET ="APAAr/1/sEIVyc+/j/HtgpTVhZD/UXNjyVym0tZbMZM=";
 
 app.use(bodyParser.json());
 require('dotenv').config(); 
@@ -54,12 +60,37 @@ app.get('/all_name', async (req, res) => {
     }
   });
   
-  app.get('/stream-video/:folderName/:videoName', async (req, res) => {
+  // app.get('/stream-video/:folderName/:videoName', async (req, res) => {
+  app.get('/stream-video/:videoName', async (req, res) => {
     try {
         
-        const { folderName, videoName } = req.params;
+        // const { folderName, videoName } = req.params;
+        const { videoName } = req.params;
 
-        const userId = folderName;
+        const authHeader = req.headers['authorization'];
+
+        // Check if the Authorization header is present
+        if (!authHeader) {
+            return res.status(401).json({ error: 'Authorization header missing' });
+        }
+
+        // Extract the token from the Bearer scheme
+        const token = authHeader.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ error: 'Bearer token missing' });
+        }
+
+        const decodedToken = jwt.verify(token, JWT_SECRET);
+        const {CLERK_CLIENT_ID, event} = decodedToken;
+
+        if(event != "stream"){
+          return res.status(401).send('You are not authorized to stream video');
+        }
+
+
+
+        // const userId = folderName;
+        const folderName = CLERK_CLIENT_ID;
 
         const filePath = `${folderName}/${videoName}`;
 
@@ -90,7 +121,7 @@ app.get('/all_name', async (req, res) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          user_id: userId,
+          user_id: CLERK_CLIENT_ID,
           event: "stream",
           status: "success"
 

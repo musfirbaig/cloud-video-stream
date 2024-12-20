@@ -88,6 +88,7 @@ exports.controller = async (req, res) => {
     // console.log("event: ", event);
 
     const JWT_SECRET ="APAAr/1/sEIVyc+/j/HtgpTVhZD/UXNjyVym0tZbMZM=";
+    let token;
 
 
     try {
@@ -96,7 +97,7 @@ exports.controller = async (req, res) => {
             case "upload":
 
                 // upload video
-                let token = jwt.sign({CLERK_CLIENT_ID, event}, JWT_SECRET, {expiresIn: '30m'});
+                token = jwt.sign({CLERK_CLIENT_ID, event}, JWT_SECRET, {expiresIn: '30m'});
 
 
                 return res.json({token});
