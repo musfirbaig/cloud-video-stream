@@ -143,9 +143,29 @@ app.get('/all_name', async (req, res) => {
 
 
 app.post('/upload', upload.single('file'), async (req, res) => {
-  const { name } = req.body; // Folder name
+  // const { name } = req.body; // Folder name
   const file = req.file; // Uploaded file
-  const userId = name;
+
+
+  const authHeader = req.headers['authorization'];
+
+        // Check if the Authorization header is present
+        if (!authHeader) {
+            return res.status(401).json({ error: 'Authorization header missing' });
+        }
+
+        // Extract the token from the Bearer scheme
+        const token = authHeader.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ error: 'Bearer token missing' });
+        }
+
+        const decodedToken = jwt.verify(token, JWT_SECRET);
+        const {CLERK_CLIENT_ID, event} = decodedToken;
+
+        if(event != "stream"){
+          return res.status(401).send('You are not authorized to stream video');
+        }
 
   // logging uploading
   await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
@@ -154,20 +174,20 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      user_id: userId,
+      user_id: CLERK_CLIENT_ID,
       event: "upload",
       status: "pending",
       fileName: file.originalname
     }),
   })
 
-  console.log(name);
-  if (!name || !file) {
+  console.log(CLERK_CLIENT_ID);
+  if (!CLERK_CLIENT_ID || !file) {
     return res.status(400).json({ error: 'Name and file are required' });
   }
 
   try {
-    const folderPath = `${name}/`;  // Folder path where the file will be uploaded
+    const folderPath = `${CLERK_CLIENT_ID}/`;  // Folder path where the file will be uploaded
     const bucket = storage.bucket(bucketName);
 
     // Check total size of the folder (check if folder exists and calculate total size)
@@ -200,7 +220,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        userId: userId,
+        userId: CLERK_CLIENT_ID,
         fileSizeMB: newFileSizeInMB
       }),
     })
@@ -250,7 +270,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      user_id: userId,
+      user_id: CLERK_CLIENT_ID,
       event: "upload",
       status: "success",
       fileName: file.originalname
