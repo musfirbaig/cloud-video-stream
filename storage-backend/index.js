@@ -47,13 +47,18 @@ app.get('/all_name', async (req, res) => {
     try {
       const folderPath = `${name}/`; // Prefix for the folder
       const [files] = await storage.bucket(bucketName).getFiles({ prefix: folderPath });
-  
-      // Filter out only files within the specified folder
-      const fileNames = files.map(file => file.name);
-
       
-  
-      res.json({ objects: fileNames });
+      // Get files with their metadata
+      const fileDetails = await Promise.all(files.map(async (file) => {
+        const [metadata] = await file.getMetadata();
+        return {
+          name: file.name,
+          size: parseInt(metadata.size), // size in bytes
+          sizeInMB: (parseInt(metadata.size) / (1024 * 1024)).toFixed(2) + ' MB' // size in MB
+        };
+      }));
+      
+      res.json({ objects: fileDetails });
     } catch (err) {
       console.error('Error listing objects in folder:', err);
       res.status(500).json({ error: 'Error listing objects in folder' });
@@ -123,7 +128,8 @@ app.get('/all_name', async (req, res) => {
         body: JSON.stringify({
           user_id: CLERK_CLIENT_ID,
           event: "stream",
-          status: "success"
+          status: "success",
+          fileName: videoName
 
         }),
       })
