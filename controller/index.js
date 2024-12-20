@@ -19,9 +19,23 @@ async function logEvent(event, status, userId, fileName=null) {
     const maxRetries = 3;
     const retryDelay = 1000; // 1 second
 
+    // logging getting filenames
+    // await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
+    //     method: "POST",
+    //     headers: {
+    //       "Content-Type": "application/json",
+    //     },
+    //     body: JSON.stringify({
+    //       user_id: userId,
+    //       event: "get_files",
+    //       status: "success"
+
+    //     }),
+    //   })
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(`http://localhost:5000/logging`, {
+            const response = await fetch(`https://us-central1-logs-project-445110.cloudfunctions.net/logging`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -10,7 +10,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, 
 });
 const app = express();
-const port = 8080;
+const port = 3380;
 
 app.use(bodyParser.json());
 require('dotenv').config(); 
@@ -31,6 +31,8 @@ const bucketName = '50mbbucket'; // Bucket name
  */
 app.get('/all_name', async (req, res) => {
     const { name } = req.query; 
+
+    // const userId = name;
   
     if (!name) {
       return res.status(400).json({ error: 'Folder name is required' });
@@ -42,6 +44,8 @@ app.get('/all_name', async (req, res) => {
   
       // Filter out only files within the specified folder
       const fileNames = files.map(file => file.name);
+
+      
   
       res.json({ objects: fileNames });
     } catch (err) {
@@ -52,7 +56,10 @@ app.get('/all_name', async (req, res) => {
   
   app.get('/stream-video/:folderName/:videoName', async (req, res) => {
     try {
+        
         const { folderName, videoName } = req.params;
+
+        const userId = folderName;
 
         const filePath = `${folderName}/${videoName}`;
 
@@ -76,6 +83,20 @@ app.get('/all_name', async (req, res) => {
         // Stream video file from Google Cloud Storage
         const readStream = file.createReadStream();
 
+        // logging for starting streaming
+      await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          event: "stream",
+          status: "success"
+
+        }),
+      })
+
         // Pipe the stream to the response
         readStream
             .on('error', (err) => {
@@ -93,6 +114,22 @@ app.get('/all_name', async (req, res) => {
 app.post('/upload', upload.single('file'), async (req, res) => {
   const { name } = req.body; // Folder name
   const file = req.file; // Uploaded file
+  const userId = name;
+
+  // logging uploading
+  await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      event: "upload",
+      status: "pending",
+      fileName: file.originalname
+    }),
+  })
+
   console.log(name);
   if (!name || !file) {
     return res.status(400).json({ error: 'Name and file are required' });
@@ -103,29 +140,93 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const bucket = storage.bucket(bucketName);
 
     // Check total size of the folder (check if folder exists and calculate total size)
-    const [files] = await bucket.getFiles({ prefix: folderPath });
-    const totalSize = await files.reduce(async (accPromise, currentFile) => {
-      const acc = await accPromise;
-      const [metadata] = await currentFile.getMetadata();
-      return acc + parseInt(metadata.size, 10); // Add file size in bytes
-    }, Promise.resolve(0));
+
+    // const [files] = await bucket.getFiles({ prefix: folderPath });
+
+    // const totalSize = await files.reduce(async (accPromise, currentFile) => {
+    //   const acc = await accPromise;
+    //   const [metadata] = await currentFile.getMetadata();
+    //   return acc + parseInt(metadata.size, 10); // Add file size in bytes
+    // }, Promise.resolve(0));
 
     // Check if adding the new file exceeds 50 MB limit
     const newFileSize = file.size; // Uploaded file size in bytes
-    if (totalSize + newFileSize > 50 * 1024 * 1024) {
+
+    // if (totalSize + newFileSize > 50 * 1024 * 1024) {
+    //   return res.status(400).json({
+    //     error: 'Limit exceeded: Total folder size cannot exceed 50 MB',
+    //   });
+    // }
+
+
+    // before uploading update the usage monitoring (call resource-monitor service)
+
+    const newFileSizeInMB = newFileSize / (1024 * 1024); // Convert bytes to MB
+
+    const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: userId,
+        fileSizeMB: newFileSizeInMB
+      }),
+    })
+
+    const responseStatus = await response.json(); // if return 0 then success
+
+    if(responseStatus != 0){
+    if(responseStata == 2){
       return res.status(400).json({
+        status: 2,
         error: 'Limit exceeded: Total folder size cannot exceed 50 MB',
       });
+      }else if(responseStata == 1){
+        return res.status(400).json({
+          status: 1,
+          error: 'Bandwidth exceeded: Total user bandwidth cannot exceed 100 MB',
+        });
+
+      }
     }
+
+    // -------------------------------
 
     // Upload the file to the bucket (folder is implicitly created when uploading)
     const destination = `${folderPath}${file.originalname}`;
     const cloudFile = bucket.file(destination);
+
+    // Add custom metadata
+    const metadata = {
+      contentType: file.mimetype,
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+    };
+
+    // If it's a video/audio file, you could add duration
+    // Note: You'll need additional libraries like 'get-video-duration' 
+    // to actually get the duration before uploading
+
     await cloudFile.save(file.buffer, {
-      metadata: {
-        contentType: file.mimetype,
-      },
+      metadata: metadata
     });
+
+    // logging uploading completed
+  await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      event: "upload",
+      status: "success",
+      fileName: file.originalname
+    }),
+  })
+
+    
 
     res.json({
       message: `File ${file.originalname} uploaded successfully to ${folderPath}`,
@@ -145,6 +246,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
  */
 app.delete('/objects', async (req, res) => {
     const { name, fileName } = req.query; // Get folder name and file name from query parameters
+
+    const userId = name;
   
     if (!name || !fileName) {
       return res.status(400).json({ error: 'Folder name and file name are required' });
@@ -153,9 +256,27 @@ app.delete('/objects', async (req, res) => {
     try {
       const filePath = `${name}/${fileName}`; // Construct the full file path
       const file = storage.bucket(bucketName).file(filePath);
+
+      const[metadata] = await file.getMetadata();
+      const fileSizeInMB = parseInt(metadata.size) / (1024 * 1024); // Convert bytes to MB
+      console.log(`File size: ${fileSizeInMB.toFixed(2)} MB`);
   
       // Delete the file
       await file.delete();
+
+      // after deleting update the usage monitoring (call resource-monitor service)
+      const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId,
+          fileSizeMB: -fileSizeInMB // according to api when we delete its negative value (its size should be negative otherwise if positive then it will be added to consumed instead of freeing quota of user)
+        }),
+      })
+
+      await response.json(); // if return 0 then success
   
       res.json({ message: `File ${filePath} deleted successfully` });
     } catch (err) {
@@ -186,11 +307,37 @@ app.delete('/folder', async (req, res) => {
       if (files.length === 0) {
         return res.status(404).json({ message: `Folder ${name} is empty or does not exist` });
       }
-  
+
+      // Calculate total size
+      let totalSizeInMB = 0;
+      for (const file of files) {
+        const [metadata] = await file.getMetadata();
+        const fileSizeInMB = parseInt(metadata.size) / (1024 * 1024); // Convert bytes to MB
+        totalSizeInMB += fileSizeInMB;
+      }
+
+      console.log(`Total folder size: ${totalSizeInMB.toFixed(2)} MB`);
+
       // Delete all files in the folder
       await Promise.all(files.map(file => file.delete()));
+
+      // after deleting update the usage monitoring (call resource-monitor service)
+      const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: userId,
+          fileSizeMB: -totalSizeInMB // according to api when we delete its negative value (its size should be negative otherwise if positive then it will be added to consumed instead of freeing quota of user)
+        }),
+      })
+
+      await response.json(); // if return 0 then success
   
-      res.json({ message: `Folder ${name} and all its contents deleted successfully` });
+      res.json({ 
+        message: `Folder ${name} and all its contents (${totalSizeInMB.toFixed(2)} MB) deleted successfully` 
+      });
     } catch (err) {
       console.error('Error deleting folder:', err);
       res.status(500).json({ error: `Error deleting folder: ${name}` });
