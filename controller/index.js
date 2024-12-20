@@ -3,7 +3,9 @@
 // clerk client id is the virtual directory 
 // so for testing i am using clerk id as test-folder 
 
-let CLERK_CLIENT_ID = "test-folder";
+
+
+// let CLERK_CLIENT_ID = "test-folder";
 
 const express = require('express');
 const fetch = require('node-fetch');
@@ -69,16 +71,17 @@ exports.controller = async (req, res) => {
     // so for testing i am using clerk id as test-folder
     
 
-    // const { userId } = req.auth;
+    const { userId } = req.auth;
+    console.log("authObj: ", req.auth);
+    let CLERK_CLIENT_ID = userId;
 
-    // CLERK_CLIENT_ID = userId;
     // console.log("user id: ", userId);
 
     
 
-    // if (!req.auth || !req.auth.userId) {
-    //     return res.status(401).json({ error: 'Unauthorized. Please log in.' });
-    //   }
+    if (!req.auth || !req.auth.userId) {
+        return res.status(401).json({ error: 'Unauthorized. Please log in.' });
+      }
 
     const { body } = req;
     
@@ -110,7 +113,7 @@ exports.controller = async (req, res) => {
                 logEvent("get-all-videos", "pending", CLERK_CLIENT_ID)
                     .catch(err => console.log("Warning: Logging failed:", err.message));
 
-                const response = await fetch(`https://storage-1-796253357501.us-central1.run.app/all_name?name=${CLERK_CLIENT_ID}`, {
+                const response = await fetch(`https://storage-microservice-796253357501.us-central1.run.app/all_name?name=${CLERK_CLIENT_ID}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -144,7 +147,7 @@ exports.controller = async (req, res) => {
 
                     console.log("fileName: ", fileName);
                     
-                    const response = await fetch(`https://storage-1-796253357501.us-central1.run.app/objects?name=${CLERK_CLIENT_ID}&fileName=${fileName}`, {
+                    const response = await fetch(`https://storage-microservice-796253357501.us-central1.run.app/objects?name=${CLERK_CLIENT_ID}&fileName=${fileName}`, {
                         method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json',
@@ -176,7 +179,7 @@ exports.controller = async (req, res) => {
                     .catch(err => console.log("Warning: Logging failed:", err.message));
 
                 {
-                    const response = await fetch(`https://storage-1-796253357501.us-central1.run.app/folder?name=${CLERK_CLIENT_ID}`, {
+                    const response = await fetch(`https://storage-microservice-796253357501.us-central1.run.app/folder?name=${CLERK_CLIENT_ID}`, {
                         method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json',
@@ -205,6 +208,25 @@ exports.controller = async (req, res) => {
                 token = jwt.sign({CLERK_CLIENT_ID, event}, JWT_SECRET, {expiresIn: '60m'});
                 return res.json({token});
                 break;
+
+            case "monitoring":
+                logEvent("request-resource-monitor", "success", CLERK_CLIENT_ID)
+                    .catch(err => console.log("Warning: Logging failed:", err.message));
+
+                    {const response = await fetch(`https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage?userId=${CLERK_CLIENT_ID}`, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+
+                    const msg = await response.json();
+
+                    return res.json(msg);
+                    }
+
+                    break;
+
             default:
                 break;
         }
@@ -244,9 +266,9 @@ app.use(express.json());
 
 // Use the middleware
 
-// app.use(
-//     ClerkExpressWithAuth()
-//   );
+app.use(
+    ClerkExpressWithAuth()
+  );
 
 app.all('/controller', exports.controller);
 

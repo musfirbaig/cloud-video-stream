@@ -13,6 +13,18 @@ const upload = multer({
 });
 
 const app = express();
+// Middleware to enable CORS
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE'); // Allowed methods
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Allowed headers
+  if (req.method === 'OPTIONS') {
+      // Respond to preflight request
+      return res.status(204).send('');
+  }
+  next();
+});
+
 const port = 8080;
 
 
