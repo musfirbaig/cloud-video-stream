@@ -173,6 +173,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         }
 
         // Extract the token from the Bearer scheme
+
         const token = authHeader.split(' ')[1];
         if (!token) {
             return res.status(401).json({ error: 'Bearer token missing' });
@@ -184,6 +185,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         if(event != "upload"){
           return res.status(401).send('You are not authorized to upload video');
         }
+
+  // const CLERK_CLIENT_ID = "test-folder";
 
   // logging uploading
   await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
@@ -246,12 +249,12 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const responseStatus = await response.json(); // if return 0 then success
 
     if(responseStatus != 0){
-    if(responseStata == 2){
+    if(responseStatus == 2){
       return res.status(400).json({
         status: 2,
         error: 'Limit exceeded: Total folder size cannot exceed 50 MB',
       });
-      }else if(responseStata == 1){
+      }else if(responseStatus == 1){
         return res.status(400).json({
           status: 1,
           error: 'Bandwidth exceeded: Total user bandwidth cannot exceed 100 MB',
@@ -302,7 +305,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     });
   } catch (err) {
     console.error('Error uploading file:', err);
-    res.status(500).json({ error: 'Error uploading file to bucket' });
+    res.status(500).json({ error: `Error uploading file to bucket` });
   }
 });
 
