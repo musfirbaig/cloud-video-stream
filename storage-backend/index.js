@@ -88,6 +88,7 @@ app.get('/all_name', async (req, res) => {
         // const { folderName, videoName } = req.params;
         const { videoName } = req.params;
         const { fileId } = req.query; // Add fileId as query parameter
+        const {generation} = req.query;
 
         const authHeader = req.headers['authorization'];
 
@@ -118,7 +119,19 @@ app.get('/all_name', async (req, res) => {
 
         // Find file by fileId if provided
         let file;
-        if (fileId) {
+
+        if (generation){
+          const [files] = await bucket.getFiles({
+            prefix: `${folderName}/`,
+            autoPaginate: false
+          });
+          file = files.find(async (f) => {
+            const [metadata] = await f.getMetadata();
+            return metadata.generation === generation;
+          });
+        }
+
+        else if (fileId) {
           const [files] = await bucket.getFiles({
             prefix: `${folderName}/`,
             autoPaginate: false
@@ -130,7 +143,7 @@ app.get('/all_name', async (req, res) => {
         }
 
         // Fallback to direct path if no fileId or file not found
-        if (!file) {
+        if ((!file) && (!generation)) {
           const filePath = `${folderName}/${videoName}`;
           file = bucket.file(filePath);
         }
