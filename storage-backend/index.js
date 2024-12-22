@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const { Storage } = require('@google-cloud/storage');
 const multer = require('multer');
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const jwt = require("jsonwebtoken");
 
@@ -49,8 +50,6 @@ const bucketName = '50mbbucket'; // Bucket name
  */
 app.get('/all_name', async (req, res) => {
     const { name } = req.query; 
-
-    // const userId = name;
   
     if (!name) {
       return res.status(400).json({ error: 'Folder name is required' });
@@ -59,14 +58,19 @@ app.get('/all_name', async (req, res) => {
     try {
       const folderPath = `${name}/`; // Prefix for the folder
       const [files] = await storage.bucket(bucketName).getFiles({ prefix: folderPath });
-      
+  
       // Get files with their metadata
       const fileDetails = await Promise.all(files.map(async (file) => {
         const [metadata] = await file.getMetadata();
         return {
           name: file.name,
           size: parseInt(metadata.size), // size in bytes
-          sizeInMB: (parseInt(metadata.size) / (1024 * 1024)).toFixed(2) + ' MB' // size in MB
+          sizeInMB: (parseInt(metadata.size) / (1024 * 1024)).toFixed(2) + ' MB', // size in MB
+          uploadedAt: metadata.uploadedAt || metadata.timeCreated, // include upload timestamp
+          contentType: metadata.contentType, // include file type
+          fileId: metadata.fileId || 'no-id', // Custom UUID
+          generation: metadata.generation, // GCP's unique identifier
+          originalName: metadata.originalName
         };
       }));
       
@@ -75,7 +79,7 @@ app.get('/all_name', async (req, res) => {
       console.error('Error listing objects in folder:', err);
       res.status(500).json({ error: 'Error listing objects in folder' });
     }
-  });
+});
   
   // app.get('/stream-video/:folderName/:videoName', async (req, res) => {
   app.get('/stream-video/:videoName', async (req, res) => {
@@ -83,6 +87,7 @@ app.get('/all_name', async (req, res) => {
         
         // const { folderName, videoName } = req.params;
         const { videoName } = req.params;
+        const { fileId } = req.query; // Add fileId as query parameter
 
         const authHeader = req.headers['authorization'];
 
@@ -109,11 +114,26 @@ app.get('/all_name', async (req, res) => {
         // const userId = folderName;
         const folderName = CLERK_CLIENT_ID;
 
-        const filePath = `${folderName}/${videoName}`;
-
-        // Create a reference to the file in the bucket
         const bucket = storage.bucket(bucketName);
-        const file = bucket.file(filePath);
+
+        // Find file by fileId if provided
+        let file;
+        if (fileId) {
+          const [files] = await bucket.getFiles({
+            prefix: `${folderName}/`,
+            autoPaginate: false
+          });
+          file = files.find(async (f) => {
+            const [metadata] = await f.getMetadata();
+            return metadata.fileId === fileId;
+          });
+        }
+
+        // Fallback to direct path if no fileId or file not found
+        if (!file) {
+          const filePath = `${folderName}/${videoName}`;
+          file = bucket.file(filePath);
+        }
 
         // Check if the file exists
         const [exists] = await file.exists();
@@ -210,31 +230,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const folderPath = `${CLERK_CLIENT_ID}/`;  // Folder path where the file will be uploaded
     const bucket = storage.bucket(bucketName);
+    const newFileSize = file.size;
+    const newFileSizeInMB = newFileSize / (1024 * 1024);
 
-    // Check total size of the folder (check if folder exists and calculate total size)
-
-    // const [files] = await bucket.getFiles({ prefix: folderPath });
-
-    // const totalSize = await files.reduce(async (accPromise, currentFile) => {
-    //   const acc = await accPromise;
-    //   const [metadata] = await currentFile.getMetadata();
-    //   return acc + parseInt(metadata.size, 10); // Add file size in bytes
-    // }, Promise.resolve(0));
-
-    // Check if adding the new file exceeds 50 MB limit
-    const newFileSize = file.size; // Uploaded file size in bytes
-
-    // if (totalSize + newFileSize > 50 * 1024 * 1024) {
-    //   return res.status(400).json({
-    //     error: 'Limit exceeded: Total folder size cannot exceed 50 MB',
-    //   });
-    // }
-
-
-    // before uploading update the usage monitoring (call resource-monitor service)
-
-    const newFileSizeInMB = newFileSize / (1024 * 1024); // Convert bytes to MB
-
+    // Check limits first
     const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
       method: "POST",
       headers: {
@@ -244,68 +243,68 @@ app.post('/upload', upload.single('file'), async (req, res) => {
         userId: CLERK_CLIENT_ID,
         fileSizeMB: newFileSizeInMB
       }),
-    })
+    });
 
-    const responseStatus = await response.json(); // if return 0 then success
+    const responseStatus = await response.json();
 
-    if(responseStatus != 0){
-    if(responseStatus == 2){
+    // Handle limit checks before proceeding with upload
+    if (responseStatus === 1) {
+      return res.status(400).json({
+        status: 1,
+        error: 'Bandwidth exceeded: Total user bandwidth cannot exceed 100 MB'
+      });
+    }
+    
+    if (responseStatus === 2) {
       return res.status(400).json({
         status: 2,
-        error: 'Limit exceeded: Total folder size cannot exceed 50 MB',
+        error: 'Limit exceeded: Total folder size cannot exceed 50 MB'
       });
-      }else if(responseStatus == 1){
-        return res.status(400).json({
-          status: 1,
-          error: 'Bandwidth exceeded: Total user bandwidth cannot exceed 100 MB',
-        });
-
-      }
     }
 
-    // -------------------------------
+    // Only proceed with upload if responseStatus is 0
+    if (responseStatus === 0) {
+      const destination = `${folderPath}${file.originalname}`;
+      const cloudFile = bucket.file(destination);
+      const fileId = uuidv4();
 
-    // Upload the file to the bucket (folder is implicitly created when uploading)
-    const destination = `${folderPath}${file.originalname}`;
-    const cloudFile = bucket.file(destination);
+      const metadata = {
+        contentType: file.mimetype,
+        size: file.size,
+        uploadedAt: new Date().toISOString(),
+        fileId: fileId, // Add custom UUID
+        originalName: file.originalname
+      };
 
-    // Add custom metadata
-    const metadata = {
-      contentType: file.mimetype,
-      size: file.size,
-      uploadedAt: new Date().toISOString(),
-    };
+      await cloudFile.save(file.buffer, {
+        metadata: metadata
+      });
 
-    // If it's a video/audio file, you could add duration
-    // Note: You'll need additional libraries like 'get-video-duration' 
-    // to actually get the duration before uploading
+      // Log successful upload
+      await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: CLERK_CLIENT_ID,
+          event: "upload",
+          status: "success",
+          fileName: file.originalname
+        }),
+      });
 
-    await cloudFile.save(file.buffer, {
-      metadata: metadata
-    });
+      return res.json({
+        message: `File ${file.originalname} uploaded successfully to ${folderPath}`,
+      });
+    }
 
-    // logging uploading completed
-  await fetch("https://us-central1-logs-project-445110.cloudfunctions.net/logging", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      user_id: CLERK_CLIENT_ID,
-      event: "upload",
-      status: "success",
-      fileName: file.originalname
-    }),
-  })
+    // If we get here, something went wrong with the response status
+    return res.status(500).json({ error: 'Invalid response from resource monitor' });
 
-    
-
-    res.json({
-      message: `File ${file.originalname} uploaded successfully to ${folderPath}`,
-    });
   } catch (err) {
     console.error('Error uploading file:', err);
-    res.status(500).json({ error: `Error uploading file to bucket` });
+    return res.status(500).json({ error: 'Error uploading file to bucket' });
   }
 });
 
