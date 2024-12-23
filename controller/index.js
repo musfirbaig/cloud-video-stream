@@ -114,6 +114,7 @@ exports.controller = async (req, res) => {
                     .catch(err => console.log("Warning: Logging failed:", err.message));
 
                 const response = await fetch(`https://storage-microservice-796253357501.us-central1.run.app/all_name?name=${CLERK_CLIENT_ID}`, {
+                // const response = await fetch(`http://localhost:8080/all_name?name=${CLERK_CLIENT_ID}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -121,6 +122,8 @@ exports.controller = async (req, res) => {
                 });
 
                 const data = await response.json();
+
+                console.log("get all videos : ",data);
 
                 // Log completion
                 if (response.ok) {

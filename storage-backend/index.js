@@ -260,15 +260,17 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
     const responseStatus = await response.json();
 
+    // console.log("monitor res: ", responseStatus);
+
     // Handle limit checks before proceeding with upload
-    if (responseStatus === 1) {
+    if (responseStatus.response === 1) {
       return res.status(400).json({
         status: 1,
         error: 'Bandwidth exceeded: Total user bandwidth cannot exceed 100 MB'
       });
     }
     
-    if (responseStatus === 2) {
+    if (responseStatus.response === 2) {
       return res.status(400).json({
         status: 2,
         error: 'Limit exceeded: Total folder size cannot exceed 50 MB'
@@ -276,7 +278,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     // Only proceed with upload if responseStatus is 0
-    if (responseStatus === 0) {
+    if (responseStatus.response === 0) {
       const destination = `${folderPath}${file.originalname}`;
       const cloudFile = bucket.file(destination);
       const fileId = uuidv4();
