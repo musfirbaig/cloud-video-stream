@@ -4,7 +4,7 @@ const { Storage } = require('@google-cloud/storage');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-
+const cors =require('cors');
 const jwt = require("jsonwebtoken");
 
 // Middleware to handle file uploads
@@ -15,16 +15,17 @@ const upload = multer({
 
 const app = express();
 // Middleware to enable CORS
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE'); // Allowed methods
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Allowed headers
-  if (req.method === 'OPTIONS') {
-      // Respond to preflight request
-      return res.status(204).send('');
-  }
-  next();
-});
+// app.use((req, res, next) => {
+//   res.setHeader('Access-Control-Allow-Origin', '*'); // Allow all origins
+//   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE'); // Allowed methods
+//   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // Allowed headers
+//   if (req.method === 'OPTIONS') {
+//       // Respond to preflight request
+//       return res.status(204).send('');
+//   }
+//   next();
+// });
+app.use(cors());
 
 const port = 8080;
 
@@ -358,7 +359,9 @@ app.delete('/objects', async (req, res) => {
         },
         body: JSON.stringify({
           userId: userId,
-          fileSizeMB: -fileSizeInMB // according to api when we delete its negative value (its size should be negative otherwise if positive then it will be added to consumed instead of freeing quota of user)
+          fileSizeMB: -fileSizeInMB,
+          event:  "delete",
+          
         }),
       })
 
@@ -377,58 +380,64 @@ app.delete('/objects', async (req, res) => {
  * URL: /folder?name=folderName
  */
 app.delete('/folder', async (req, res) => {
-    const { name } = req.query; // Get the folder name from the query parameters
-  
-    if (!name) {
-      return res.status(400).json({ error: 'Folder name is required' });
+  const { name } = req.query; // Get the folder name from the query parameters
+
+  if (!name) {
+    return res.status(400).json({ error: 'Folder name is required' });
+  }
+
+  try {
+    const folderPath = `${name}/`; // Prefix for the folder
+    const bucket = storage.bucket(bucketName);
+
+    // Get all files within the folder
+    const [files] = await bucket.getFiles({ prefix: folderPath });
+
+    if (files.length === 0) {
+      return res.status(404).json({ message: `Folder ${name} is empty or does not exist` });
     }
-  
-    try {
-      const folderPath = `${name}/`; // Prefix for the folder
-      const bucket = storage.bucket(bucketName);
-  
-      // Get all files within the folder
-      const [files] = await bucket.getFiles({ prefix: folderPath });
-  
-      if (files.length === 0) {
-        return res.status(404).json({ message: `Folder ${name} is empty or does not exist` });
-      }
 
-      // Calculate total size
-      let totalSizeInMB = 0;
-      for (const file of files) {
-        const [metadata] = await file.getMetadata();
-        const fileSizeInMB = parseInt(metadata.size) / (1024 * 1024); // Convert bytes to MB
-        totalSizeInMB += fileSizeInMB;
-      }
+    // Calculate total size and send resource monitor request for each file
+    let totalSizeInMB = 0;
+    for (const file of files) {
+      const [metadata] = await file.getMetadata();
+      const fileSizeInMB = parseInt(metadata.size) / (1024 * 1024); // Convert bytes to MB
+      totalSizeInMB += fileSizeInMB;
 
-      console.log(`Total folder size: ${totalSizeInMB.toFixed(2)} MB`);
-
-      // Delete all files in the folder
-      await Promise.all(files.map(file => file.delete()));
-
-      // after deleting update the usage monitoring (call resource-monitor service)
+      // Send resource monitoring request for each file
       const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: userId,
-          fileSizeMB: -totalSizeInMB // according to api when we delete its negative value (its size should be negative otherwise if positive then it will be added to consumed instead of freeing quota of user)
-        }),
-      })
+          userId: name,  // Use the folder name as the userId
+          fileSizeMB: -fileSizeInMB,  // Negative size to free the space
+          event: "delete",
 
-      await response.json(); // if return 0 then success
-  
-      res.json({ 
-        message: `Folder ${name} and all its contents (${totalSizeInMB.toFixed(2)} MB) deleted successfully` 
+        }),
       });
-    } catch (err) {
-      console.error('Error deleting folder:', err);
-      res.status(500).json({ error: `Error deleting folder: ${name}` });
+
+      const responseStatus = await response.json();
+      
+      // If the response is not success (status other than 0), abort the process
+      if (responseStatus.response !== 0) {
+        return res.status(400).json({ error: `Failed to update resource monitor for ${file.name}` });
+      }
     }
-  });
+
+    // Delete all files in the folder
+    await Promise.all(files.map(file => file.delete()));
+
+    res.json({ 
+      message: `Folder ${name} and all its contents (${totalSizeInMB.toFixed(2)} MB) deleted successfully` 
+    });
+  } catch (err) {
+    console.error('Error deleting folder:', err);
+    res.status(500).json({ error: `Error deleting folder: ${name}` });
+  }
+});
+
   
 // Start the Express server
 app.listen(port, () => {
