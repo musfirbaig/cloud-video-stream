@@ -352,7 +352,7 @@ app.delete('/objects', async (req, res) => {
       await file.delete();
 
       // after deleting update the usage monitoring (call resource-monitor service)
-      const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
+      const response = await fetch("https://asia-south1-resource-monitor-service.cloudfunctions.net/resource-monitor-2/usage", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -405,7 +405,7 @@ app.delete('/folder', async (req, res) => {
       totalSizeInMB += fileSizeInMB;
 
       // Send resource monitoring request for each file
-      const response = await fetch("https://us-central1-resource-monitor-service.cloudfunctions.net/resource-monitor/usage", {
+      const response = await fetch("https://asia-south1-resource-monitor-service.cloudfunctions.net/resource-monitor-2/usage", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
