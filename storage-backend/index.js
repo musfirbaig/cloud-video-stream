@@ -361,7 +361,7 @@ app.delete('/objects', async (req, res) => {
           userId: userId,
           fileSizeMB: -fileSizeInMB,
           event:  "delete",
-          
+          fileId:fileName
         }),
       })
 
@@ -414,7 +414,7 @@ app.delete('/folder', async (req, res) => {
           userId: name,  // Use the folder name as the userId
           fileSizeMB: -fileSizeInMB,  // Negative size to free the space
           event: "delete",
-
+          fileId: metadata.fileName,
         }),
       });
 
